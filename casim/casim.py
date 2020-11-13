@@ -338,6 +338,8 @@ class CancerSimulator(object):
         self.__ploidy=2
         self.__mut_multiplier=[self.__s]*100000
         
+        self.__pool=set()
+        
         if self.parameters.tumour_multiplicity == 'single':
             logging.info('Running in single tumour mode.')
             initLoc=(int(self.parameters.matrix_size*0.5),int(self.parameters.matrix_size*0.5))
@@ -346,7 +348,7 @@ class CancerSimulator(object):
 
             self.__mtx[initLoc]=1
             self.__mut_container=[(0, 0), (0, 1)]
-            self.__pool=[initLoc]
+            self.__pool.add(initLoc)
 
         #start the pool of cancer cells by adding the initial cancer cell into it
         if self.parameters.tumour_multiplicity == 'double':
@@ -360,7 +362,8 @@ class CancerSimulator(object):
             self.__mtx[initLoc]=1
             self.__mtx[secondinitLoc]=2
             self.__mut_container=[(0, 0), (0, 1), (0,2)]
-            self.__pool=[initLoc, secondinitLoc]
+            self.__pool.add(initLoc)
+            self.__pool.add(secondinitLoc)
 
         # create lists used in loops
         self.__growth_plot_data=[]
@@ -723,10 +726,18 @@ Inspect the tumour matrix data `mtx.p` in the output directory""")
 
         #flatten the list of mutations
         reduced=list(itertools.chain(*[j for j in mutation_list]))
+        
+        #run through the mutation list once and gather counts for all of them
+        mut_count_dict={}
+        for i in set(reduced):
+            if not i in mut_count_dict:
+                mut_count_dict[i] = 1
+            else:
+                mut_count_dict[i] += 1
 
         #count number of unique mutations in whole tumour at time step
         for i in set(reduced):
-            mut_count.append((i, float(reduced.count(i))))
+            mut_count.append((i, float(mut_count_dict[i])))
 
         #sort list of mutations based on the mutation id just in case they are not sorted
         mut_count=sorted(mut_count,key=itemgetter(0))
@@ -811,7 +822,8 @@ Inspect the tumour matrix data `mtx.p` in the output directory""")
         :param int step: The time step in the simulation
 
         """
-        for cell in self.__pool:
+        temp_pool = list(self.__pool)
+        for cell in temp_pool:
             beneficial = self.__mtx[cell] in self.__beneficial_mutation
             r = prng.random()
 
@@ -881,12 +893,14 @@ Inspect the tumour matrix data `mtx.p` in the output directory""")
             temp_pool=[]
 
             # reshuffle the order of pool to avoid that cells with low number divide always first.
-            shuffle(self.__pool)
+            # convert the set into a list first because set is unordered.
+            shuffled_pool = list(self.__pool)
+            shuffle(shuffled_pool)
 
             # logging.debug('list of cancer cells %s', str(self.__pool))
 
             # Loop over all cells in the pool.
-            for cell in self.__pool:
+            for cell in shuffled_pool:
                 logging.debug('cell to divide %s', str(cell))
 
                 # Get the existing neighboring cells.
@@ -902,7 +916,7 @@ Inspect the tumour matrix data `mtx.p` in the output directory""")
 
 
             # add new cancer cells to a pool of cells available for division next round
-            [self.__pool.append(v) for v in temp_pool]
+            [self.__pool.add(v) for v in temp_pool]
 
             self.__growth_plot_data.append(len(self.__pool))
 
@@ -1063,7 +1077,7 @@ Inspect the tumour matrix data `mtx.p` in the output directory""")
 
         # If no positions where given, find the center of the matrix.
         if self.parameters.sampling_positions is None:
-            self.parameters.sampling_positions = [prng.choice(self.__pool)]
+            self.parameters.sampling_positions = [prng.choice(tuple(self.__pool))]
 
         return self.parameters.sampling_positions
 
